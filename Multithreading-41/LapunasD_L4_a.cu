@@ -16,11 +16,9 @@ using namespace std;
 
 struct GpuStruct
 {
-        char *pav;
+        char pav[50];
         int kiekis;
         double kaina;
-		int strlen;
-		GpuStruct();
 };
 
 class Struct
@@ -31,8 +29,6 @@ class Struct
         GpuStruct gpuStruct;
 public:
         Struct(string input = " 0 0");
-		Struct();
-        ~Struct(){cudaFree(gpuStruct.pav);}
         GpuStruct GetDev(){return gpuStruct;}
         string Print();
 };
@@ -50,9 +46,7 @@ Struct::Struct(string input)
         kaina = stod(input.substr(start));
         gpuStruct.kaina = kaina;
         gpuStruct.kiekis = kiekis;
-		gpuStruct.strlen = pav.length();
-        cudaMalloc(&gpuStruct.pav, pav.size() + 1);
-        cudaMemcpy(gpuStruct.pav, pav.c_str(), pav.size() + 1, cudaMemcpyHostToDevice);
+		memcpy(gpuStruct.pav, pav.c_str(), pav.length() + 1);
 }
 
 string Struct::Print()
@@ -84,8 +78,6 @@ int main()
 
         cout << "\nsinchroninis isvedimas\n\n";
         syncOut(input);
-        cout << "\nasinchroninis isvedimas\n\n";
-        cout << setw(10) << "Procesas" << setw(3) << "Nr" << Titles() << "\n\n";
         
         //procesu duomenu pradzios indeksai
         vector<int> starts;
@@ -107,25 +99,33 @@ int main()
         int *startsdev;
         //pradziu masyvas GPU
         cudaMalloc(&startsdev, sizeof(int) * starts.size());
-        cudaMemcpy(startsdev, &starts[0], sizeof(int) * starts.size(), cudaMemcpyHostToDevice);
+		cudaMemcpy(startsdev, starts.data(), sizeof(int) * starts.size(), cudaMemcpyHostToDevice);
         GpuStruct *arr;
         //strukturu masyvas GPU
         cudaMalloc(&arr, sizeof(GpuStruct) * count);
-        cudaMemcpy(arr, &localStructs[0], sizeof(GpuStruct) * count, cudaMemcpyHostToDevice);
-        //GPU funkcija
-        GpuStruct* gpuRes;
+		cudaMemcpy(arr, localStructs.data(), sizeof(GpuStruct) * count, cudaMemcpyHostToDevice);
 
+        GpuStruct* gpuRes;
 		cudaMalloc(&gpuRes, sizeof(GpuStruct) * width);
 
         Add<<<1, width>>>(arr, startsdev, input.size(), gpuRes);
         //palaukiam kol gpu baigs spausdint, "pause" uzrakina konsole
         cudaDeviceSynchronize();
+
+		GpuStruct *res = (GpuStruct*)malloc(sizeof(GpuStruct) * width);
+		cudaMemcpy(res, gpuRes, sizeof(GpuStruct) * width, cudaMemcpyDeviceToHost);
+		
+        cout << "\n\n" << setw(3) << "Nr" << setw(30) << "Pavadiniams" << setw(7) << "Kiekis" << setw(10) << "Kaina" << "\n\n";
+		for(int i = 0; i < width; i++)
+		{
+			cout << setw(3) << i << setw(30) << res[i].pav << setw(7) << res[i].kiekis << setw(10) << res[i].kaina << endl;
+		}
+
         system("pause");
         //atlaisvinami pagrindiniai masyvai, teksto eilutes atlaisvinamos sunaikintant pagrindines strukturas - input
         cudaFree(arr);
         cudaFree(startsdev);
         return 0;
-
 }
 
 vector<vector<Struct>> ReadStuff(string file)
@@ -192,17 +192,24 @@ void __global__ Add(GpuStruct *data, int *starts, int arrCount, GpuStruct *res)
 {
 	int id = threadIdx.x;
 	int length = 0;
-	for(int i = 0; i < arrCount; i++)
-	{
-		if(starts[i] + id < starts[i+1])
-			length += data[starts[i]].strlen + id;
-	}
-	res[id].strlen = length;
-	cudaMallock(&res[id].pav, length + 1);
-	res[id].pav[length] = 0;
+
+	GpuStruct *myRes = res + id;
+	myRes->pav[length-1] = 0;
+	myRes->kaina = 0.0;
+	myRes->kiekis = 0;
 	int ind = 0;
 	for(int i = 0; i < arrCount; i++)
 	{
-		
+		if(starts[i] + id < starts[i+1])
+		{
+			GpuStruct *src = data + starts[i] + id;
+			myRes->kaina += src->kaina;
+			myRes->kiekis += src->kiekis;
+			for(int j = 0; src->pav[j] != 0; j++, ind++)
+			{
+				myRes->pav[ind] = src->pav[j];
+			}
+		}
 	}
+	myRes->pav[ind] = 0;
 }
