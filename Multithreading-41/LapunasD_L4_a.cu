@@ -19,6 +19,7 @@ struct GpuStruct
         char *pav;
         int kiekis;
         double kaina;
+		int strlen;
 		GpuStruct();
 };
 
@@ -49,6 +50,7 @@ Struct::Struct(string input)
         kaina = stod(input.substr(start));
         gpuStruct.kaina = kaina;
         gpuStruct.kiekis = kiekis;
+		gpuStruct.strlen = pav.length();
         cudaMalloc(&gpuStruct.pav, pav.size() + 1);
         cudaMemcpy(gpuStruct.pav, pav.c_str(), pav.size() + 1, cudaMemcpyHostToDevice);
 }
@@ -67,55 +69,63 @@ string Titles();
 string Print(int nr, Struct &s);
 void syncOut(vector<vector<Struct>>&);
 
-void __global__ Add(GpuStruct **data, GpuStruct *ret);
+void __global__ Add(GpuStruct *data, int *starts, int arrCount, GpuStruct *res);
 
 int main()
 {
         auto input = ReadStuff("LapunasD.txt");
         int count = 0;
+        //suskaiciuojama kiek is viso yra duomenu
+        for(auto &vec : input)
+                count += vec.size();
+		int width = 0;
 		for(auto &vec : input)
-			count = vec.size() > count ? vec.size() : count;
+				width = vec.size() > width ? vec.size() : width;
+
         cout << "\nsinchroninis isvedimas\n\n";
         syncOut(input);
         cout << "\nasinchroninis isvedimas\n\n";
         cout << setw(10) << "Procesas" << setw(3) << "Nr" << Titles() << "\n\n";
         
-		vector<GpuStruct*> gpuStructs;
+        //procesu duomenu pradzios indeksai
+        vector<int> starts;
+        //lokalios GPU strukturu kopijos
+        vector<GpuStruct> localStructs;
+        
+        int put = 0;
+        for(auto &vec : input)
+        {
+                //proceso pradzia
+                starts.push_back(put);
+                for(auto &s : vec)
+                {
+                        localStructs.push_back(s.GetDev());
+                        put++;
+                }
+        }
+        starts.push_back(put);
+        int *startsdev;
+        //pradziu masyvas GPU
+        cudaMalloc(&startsdev, sizeof(int) * starts.size());
+        cudaMemcpy(startsdev, &starts[0], sizeof(int) * starts.size(), cudaMemcpyHostToDevice);
+        GpuStruct *arr;
+        //strukturu masyvas GPU
+        cudaMalloc(&arr, sizeof(GpuStruct) * count);
+        cudaMemcpy(arr, &localStructs[0], sizeof(GpuStruct) * count, cudaMemcpyHostToDevice);
+        //GPU funkcija
+        GpuStruct* gpuRes;
 
-		vector<Struct> localRes;
-		GpuStruct* gpuRes;
+		cudaMalloc(&gpuRes, sizeof(GpuStruct) * width);
 
-		GpuStruct** data;
-
-		cudaMalloc(&gpuRes, sizeof(GpuStruct) * count);
-		for(int i = 0; i < count; i++)
-		{
-			localRes.emplace_back();
-			cudaMemcpy(gpuRes + i * sizeof(GpuStruct), &localRes[i], sizeof(GpuStruct), cudaMemcpyHostToDevice);
-		}
-
-		for(int i = 0; i < input.size(); i++)
-		{
-			GpuStruct *tmp;
-			auto &vec = input[i];
-			cudaMalloc(&tmp, sizeof(GpuStruct) * vec.size());
-
-			for(int j = 0; j < vec.size(); j++)
-			{
-				cudaMemcpy(&tmp + j * sizeof(GpuStruct), &vec[i].GetDev(), sizeof(GpuStruct), cudaMemcpyHostToDevice);
-			}
-			gpuStructs.push_back(tmp);
-		}
-
-		cudaMalloc(&data, sizeof(GpuStruct*) * input.size());
-		for(int i = 0; i < input.size(); i++)
-		{
-			cudaMemcpy(data + sizeof(GpuStruct*) * i, gpuStructs[i], sizeof(GpuStruct*), cudaMemcpyHostToDevice);
-		}
-
-		Add<<<1, input.size()>>>(data, res);
-
+        Add<<<1, width>>>(arr, startsdev, input.size(), gpuRes);
+        //palaukiam kol gpu baigs spausdint, "pause" uzrakina konsole
+        cudaDeviceSynchronize();
+        system("pause");
+        //atlaisvinami pagrindiniai masyvai, teksto eilutes atlaisvinamos sunaikintant pagrindines strukturas - input
+        cudaFree(arr);
+        cudaFree(startsdev);
         return 0;
+
 }
 
 vector<vector<Struct>> ReadStuff(string file)
@@ -178,6 +188,21 @@ string Print(int nr, Struct &s)
         return ss.str();
 }
 
-void __global__ Add(GpuStruct **data, GpuStruct *ret)
+void __global__ Add(GpuStruct *data, int *starts, int arrCount, GpuStruct *res)
 {
+	int id = threadIdx.x;
+	int length = 0;
+	for(int i = 0; i < arrCount; i++)
+	{
+		if(starts[i] + id < starts[i+1])
+			length += data[starts[i]].strlen + id;
+	}
+	res[id].strlen = length;
+	cudaMallock(&res[id].pav, length + 1);
+	res[id].pav[length] = 0;
+	int ind = 0;
+	for(int i = 0; i < arrCount; i++)
+	{
+		
+	}
 }
