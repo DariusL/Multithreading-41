@@ -112,7 +112,7 @@ int main()
         //palaukiam kol gpu baigs spausdint, "pause" uzrakina konsole
         cudaDeviceSynchronize();
 
-		GpuStruct *res = (GpuStruct*)malloc(sizeof(GpuStruct) * width);
+		GpuStruct *res = new GpuStruct[width];
 		cudaMemcpy(res, gpuRes, sizeof(GpuStruct) * width, cudaMemcpyDeviceToHost);
 		
         cout << "\n\n" << setw(3) << "Nr" << setw(30) << "Pavadiniams" << setw(7) << "Kiekis" << setw(10) << "Kaina" << "\n\n";
@@ -125,6 +125,8 @@ int main()
         //atlaisvinami pagrindiniai masyvai, teksto eilutes atlaisvinamos sunaikintant pagrindines strukturas - input
         cudaFree(arr);
         cudaFree(startsdev);
+		cudaFree(gpuRes);
+		delete res;
         return 0;
 }
 
@@ -191,10 +193,8 @@ string Print(int nr, Struct &s)
 void __global__ Add(GpuStruct *data, int *starts, int arrCount, GpuStruct *res)
 {
 	int id = threadIdx.x;
-	int length = 0;
 
 	GpuStruct *myRes = res + id;
-	myRes->pav[length-1] = 0;
 	myRes->kaina = 0.0;
 	myRes->kiekis = 0;
 	int ind = 0;
