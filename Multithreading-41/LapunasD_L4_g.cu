@@ -1,3 +1,13 @@
+//Darius Lapunas, IFF-1, 15 kompiuteris
+/*
+	Pakeista:
+	77
+	122-126
+	140-146
+	152-155
+	243-247
+*/
+
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
@@ -64,6 +74,7 @@ string Print(int nr, Struct &s);
 void syncOut(vector<vector<Struct>>&);
 
 void __global__ Add(GpuStruct *data, int *starts, int arrCount, GpuStruct *res);
+void __global__ Gynimas(GpuStruct *data, double *res);
 
 int main()
 {
@@ -108,6 +119,11 @@ int main()
         GpuStruct* gpuRes;
 		cudaMalloc(&gpuRes, sizeof(GpuStruct) * width);
 
+		double *gpuGynimasRes;
+		int gynimoDydis = input[0].size();
+		cudaMalloc(&gpuGynimasRes, sizeof(double) * gynimoDydis);
+		
+		Gynimas<<<1, gynimoDydis>>>(arr, gpuGynimasRes);
         Add<<<1, width>>>(arr, startsdev, input.size(), gpuRes);
         //palaukiam kol gpu baigs spausdint, "pause" uzrakina konsole
         cudaDeviceSynchronize();
@@ -121,12 +137,22 @@ int main()
 			cout << setw(3) << i << setw(30) << res[i].pav << setw(7) << res[i].kiekis << setw(10) << res[i].kaina << endl;
 		}
 
+		cout << "\nGynimas:\n";
+		double *localGynimasRes = new double[gynimoDydis];
+		cudaMemcpy(localGynimasRes, gpuGynimasRes, sizeof(double) * gynimoDydis, cudaMemcpyDeviceToHost);
+		for(int i = 0; i < gynimoDydis; i++)
+		{
+			cout << i << "   " << localGynimasRes[i] << endl;
+		}
+
         system("pause");
         //atlaisvinami pagrindiniai masyvai, teksto eilutes atlaisvinamos sunaikintant pagrindines strukturas - input
         cudaFree(arr);
         cudaFree(startsdev);
 		cudaFree(gpuRes);
+		cudaFree(gpuGynimasRes);
 		delete res;
+		delete localGynimasRes;
         return 0;
 }
 
@@ -212,4 +238,10 @@ void __global__ Add(GpuStruct *data, int *starts, int arrCount, GpuStruct *res)
 		}
 	}
 	myRes->pav[ind] = 0;
+}
+
+void __global__ Gynimas(GpuStruct *data, double *res)
+{
+	int id = threadIdx.x;
+	res[id] = data[id].kiekis + data[id].kaina;
 }
