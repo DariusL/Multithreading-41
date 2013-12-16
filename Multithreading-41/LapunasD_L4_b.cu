@@ -16,7 +16,6 @@
 #include <stdio.h>
 #include <cuda.h>
 
-#include <omp.h>
 #include <string>
 #include <fstream>
 #include <vector>
@@ -31,8 +30,8 @@ __device__ void strcat_dev(char *dst, const char *src)
 	int i = 0;
 	for(; dst[i] != 0; i++);
 	for(int j = 0; src[j] != 0; j++, i++)
-		dst[i] = src[i];
-	dst[++i] = 0;
+		dst[i] = src[j];
+	dst[i] = 0;
 }
 
 struct Struct
@@ -86,56 +85,50 @@ void syncOut(vector<vector<Struct>>&);
 
 int main()
 {
-        auto input = ReadStuff("LapunasD.txt");
-		int i = 0;
+    auto data = ReadStuff("LapunasD.txt");
+	syncOut(data);
+	vector<Struct> flatData;
 
-        cout << "\nsinchroninis isvedimas\n\n";
-        syncOut(input);
-        
-		thrust::device_vector<int> devKeys;
-		thrust::device_vector<Struct> devData;
-        
-        for(auto &vec : input)
-        {
-			for(int i = 0; i < vec.size(); i++)
-            {
-				devData.push_back(vec[i]);
-				devKeys.push_back(i);
-            }
-        }
+	vector<int> keys;
 
-		thrust::sort_by_key(devKeys.begin(), devKeys.end(), devData.begin());
-
-		thrust::device_vector<int> outputKeys;
-		outputKeys.reserve(devKeys.size());
-		thrust::device_vector<Struct> outputData;
-		outputData.reserve(devKeys.size());
-
-		thrust::equal_to<int> pred;
-		thrust::plus<Struct> plus;
-
-		try
+	int width = 0;
+	for(int i = 0; i < data.size(); i++)
+	{
+		width = data[i].size() > width ? data[i].size() : width;
+		for(int j = 0; j < data[i].size(); j++)
 		{
-			thrust::reduce_by_key(devKeys.begin(), devKeys.end(), devData.begin(), outputKeys.begin(), outputData.begin(), pred, plus);
+			keys.push_back(j);
+			flatData.push_back(data[i][j]);
 		}
-		catch(thrust::system_error e)
-		{
-			cout << e.what() << endl;
-			system("pause");
-			return 1;
-		}
+	}
+	
+    thrust::equal_to<int> binary_pred;
+    thrust::plus<Struct> binary_op;
+	thrust::sort_by_key(keys.data(), keys.data() + keys.size(), flatData.data());
 
+	thrust::host_vector<int> host_keys = keys;
+	thrust::device_vector<int> device_keys = host_keys;
 
-		for(int i = 0; i < outputData.size(); i++)
-		{
-			Struct res = outputData[i];
-			cout << setw(3) << i << setw(30) << res.pav << setw(7) << res.kiekis << setw(10) << res.kaina << endl;
-		}
+	thrust::host_vector<Struct> host_values = flatData;
+	thrust::device_vector<Struct> device_values = host_values;
 
-		system("pause");
-		cout << i;
+	thrust::device_vector<Struct> output_values;
+	output_values.reserve(flatData.size());
+	thrust::device_vector<int> output_keys;
+	output_keys.reserve(flatData.size());
 
-        return 0;
+	thrust::reduce_by_key(device_keys.begin(), device_keys.end(), device_values.begin(), output_keys.begin(), output_values.begin(), binary_pred, binary_op);
+
+	thrust::host_vector<int> result_keys = output_keys;
+	
+	cout << "\n\n" << setw(3) << "Nr" << setw(30) << "Pavadiniams" << setw(7) << "Kiekis" << setw(10) << "Kaina" << "\n\n";
+	for(int i = 0; i < width; i++)
+	{
+		Struct res = output_values[i];
+		cout << setw(3) << i << setw(30) << res.pav << setw(7) << res.kiekis << setw(10) << res.kaina << endl;
+	}
+	system("pause");
+	return 0;
 }
 
 vector<vector<Struct>> ReadStuff(string file)
