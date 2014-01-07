@@ -1,13 +1,3 @@
-//Darius Lapunas, IFF-1, 15 kompiuteris
-/*
-	Pakeista:
-	77
-	122-126
-	140-146
-	152-155
-	243-247
-*/
-
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 #include <thrust/sort.h>
@@ -25,6 +15,7 @@
 
 using namespace std;
 
+//string concat funkcija vaizdo plokstei
 __device__ void strcat_dev(char *dst, const char *src)
 {
 	int i = 0;
@@ -34,6 +25,7 @@ __device__ void strcat_dev(char *dst, const char *src)
 	dst[i] = 0;
 }
 
+//struktura keliama i gpu su atitinkamais konstruktoriais
 struct Struct
 {
     char pav[50];
@@ -65,6 +57,7 @@ string Struct::Print()
         return ss.str();
 }
 
+//operatorius sudeti 2 strukturas, paleidziamas kazkur giliai thrust
 __device__ Struct operator+(const Struct &left, const Struct &right)
 {
 	Struct ret;
@@ -88,9 +81,9 @@ int main()
     auto data = ReadStuff("LapunasD.txt");
 	syncOut(data);
 	vector<Struct> flatData;
-
 	vector<int> keys;
 
+	//duomenys suplojami i viena masyva, sudaromas raktu masyvas
 	int width = 0;
 	for(int i = 0; i < data.size(); i++)
 	{
@@ -104,8 +97,10 @@ int main()
 	
     thrust::equal_to<int> binary_pred;
     thrust::plus<Struct> binary_op;
+    //rikiuojama pagal raktus
 	thrust::sort_by_key(keys.data(), keys.data() + keys.size(), flatData.data());
 
+	//daug castinimo
 	thrust::host_vector<int> host_keys = keys;
 	thrust::device_vector<int> device_keys = host_keys;
 
@@ -117,13 +112,16 @@ int main()
 	thrust::device_vector<int> output_keys;
 	output_keys.reserve(flatData.size());
 
+	//sumavimas pagal raktus
 	thrust::reduce_by_key(device_keys.begin(), device_keys.end(), device_values.begin(), output_keys.begin(), output_values.begin(), binary_pred, binary_op);
 
+	//cia kazkam naudojau
 	thrust::host_vector<int> result_keys = output_keys;
 	
 	cout << "\n\n" << setw(3) << "Nr" << setw(30) << "Pavadiniams" << setw(7) << "Kiekis" << setw(10) << "Kaina" << "\n\n";
 	for(int i = 0; i < width; i++)
 	{
+		//spausdinami sudeti rezultatai
 		Struct res = output_values[i];
 		cout << setw(3) << i << setw(30) << res.pav << setw(7) << res.kiekis << setw(10) << res.kaina << endl;
 	}
